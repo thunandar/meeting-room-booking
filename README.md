@@ -2,6 +2,11 @@
 
 Take-home assignment: a small web application for managing bookings for a single meeting room, with role-based access control enforced server-side.
 
+**Live demo:** https://meeting-room-booking-dusky-ten.vercel.app
+**API:** https://meeting-room-booking-a397.onrender.com (health check: [`/health`](https://meeting-room-booking-a397.onrender.com/health))
+
+> Note: the API runs on Render's free tier and spins down when idle — the first request after a quiet period takes ~30–60 seconds while it cold-starts. Log in as **Alice (Admin)**, **Oliver (Owner)**, or **Uma / Ben (User)** to try each role.
+
 - **`api/`** — Node.js backend: Express 5 + TypeScript, Prisma, PostgreSQL
 - **`web/`** — Frontend: Next.js 15 (App Router) + Tailwind CSS
 
