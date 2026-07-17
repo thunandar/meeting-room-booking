@@ -213,7 +213,7 @@ export default function BookingsPage() {
                         {formatDuration(booking.startTime, booking.endTime)}
                       </span>
                       {past && <span className="rounded-full bg-warm-soft px-2 py-0.5 text-warm-deep">Past</span>}
-                      <span>Booked by {booking.user.name}</span>
+                      <span>Booked by {booking.userId === session?.user.id ? 'you' : booking.user.name}</span>
                       <RoleBadge role={booking.user.role} />
                     </p>
                   </div>
@@ -235,7 +235,8 @@ export default function BookingsPage() {
           message={
             <>
               <strong>{formatInstant(confirming.startTime)}</strong> → <strong>{formatInstant(confirming.endTime)}</strong>
-              , booked by {confirming.user.name}. This cannot be undone.
+              , booked by {confirming.userId === session?.user.id ? 'you' : confirming.user.name}. This cannot be
+              undone.
             </>
           }
           confirmLabel="Delete booking"
