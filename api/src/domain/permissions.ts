@@ -28,3 +28,16 @@ export function canManageUsers(actor: Actor): boolean {
 export function canViewSummary(actor: Actor): boolean {
   return actor.role === 'owner' || actor.role === 'admin';
 }
+
+/**
+ * The system must always keep at least one admin, or user management is
+ * permanently locked. True when deleting the target (newRole omitted) or
+ * moving them to newRole would leave zero admins.
+ */
+export function wouldRemoveLastAdmin(
+  target: { role: Role },
+  adminCount: number,
+  newRole?: Role,
+): boolean {
+  return target.role === 'admin' && newRole !== 'admin' && adminCount <= 1;
+}

@@ -2,8 +2,34 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1'];
+
+/**
+ * The seed WIPES all users and bookings before inserting fixtures. Against a
+ * local database that is exactly what you want; against a remote (production)
+ * database it is destructive, so it refuses unless SEED_FORCE=1 is set.
+ */
+function assertSafeTarget(): void {
+  const url = process.env.DATABASE_URL ?? '';
+  const host = (() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '';
+    }
+  })();
+  if (!LOCAL_HOSTS.includes(host) && process.env.SEED_FORCE !== '1') {
+    console.error(
+      `Refusing to seed non-local database host "${host}" — this DELETES all users and bookings.\n` +
+        'If you really mean to reseed a remote/production database, rerun with SEED_FORCE=1.',
+    );
+    process.exit(1);
+  }
+}
+
 /** Seeds one user per role (plus a second regular user) and a few bookings. */
 async function main(): Promise<void> {
+  assertSafeTarget();
   await prisma.booking.deleteMany();
   await prisma.user.deleteMany();
 

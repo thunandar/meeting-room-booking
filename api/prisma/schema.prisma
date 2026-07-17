@@ -17,7 +17,7 @@ model User {
   id        String    @id @default(cuid())
   name      String
   role      Role
-  createdAt DateTime  @default(now())
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
   bookings  Booking[]
 
   @@map("users")
@@ -27,9 +27,9 @@ model Booking {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startTime DateTime
-  endTime   DateTime
-  createdAt DateTime @default(now())
+  startTime DateTime @db.Timestamptz(3)
+  endTime   DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([startTime, endTime])
   @@map("bookings")

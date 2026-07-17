@@ -10,7 +10,13 @@ import { summaryRouter } from './routes/summary-routes.js';
 export function createApp(): express.Express {
   const app = express();
 
-  app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') ?? true }));
+  // In production the allowed origins must be explicit; reflecting any origin
+  // is only acceptable for local development.
+  const corsOrigins = process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim());
+  if (!corsOrigins && process.env.NODE_ENV === 'production') {
+    throw new Error('CORS_ORIGIN must be set in production (comma-separated list of allowed origins).');
+  }
+  app.use(cors({ origin: corsOrigins ?? true }));
   app.use(express.json());
 
   app.get('/health', (_req, res) => {

@@ -5,8 +5,7 @@ import * as bookingService from '../services/booking-service.js';
 
 export const bookingRouter = Router();
 
-bookingRouter.get('/', async (req, res) => {
-  requireActor(req);
+bookingRouter.get('/', async (_req, res) => {
   const bookings = await bookingService.listBookings();
   res.json({ bookings });
 });

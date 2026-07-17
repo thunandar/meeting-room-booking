@@ -12,11 +12,12 @@ export interface TimeRange {
   endTime: Date;
 }
 
-export type RangeValidationError = 'EMPTY_OR_NEGATIVE_RANGE';
+/** Doubles as the API error code so callers can pass it through directly. */
+export type RangeValidationError = 'INVALID_TIME_RANGE';
 
 export function validateRange(range: TimeRange): RangeValidationError | null {
   if (range.startTime.getTime() >= range.endTime.getTime()) {
-    return 'EMPTY_OR_NEGATIVE_RANGE';
+    return 'INVALID_TIME_RANGE';
   }
   return null;
 }

@@ -1,7 +1,16 @@
+# Render blueprint for the API. The database itself lives on Supabase;
+# DATABASE_URL and CORS_ORIGIN are set in the Render dashboard (sync: false).
+#
+# One-time manual step after the first deploy: seed the demo data by running,
+# from a local checkout with DATABASE_URL pointing at the production database:
+#   cd api && SEED_FORCE=1 npm run db:seed
+# (The seed wipes all rows and refuses to run against a non-local host
+# without SEED_FORCE=1 — see prisma/seed.ts.)
 services:
   - type: web
     name: meeting-room-api
     runtime: node
+    plan: free
     rootDir: api
     buildCommand: npm ci && npm run build && npx prisma migrate deploy
     startCommand: npm start

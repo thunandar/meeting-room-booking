@@ -39,8 +39,10 @@ Log in from the picker as **Alice (Admin)**, **Oliver (Owner)**, **Uma**, or **B
 ### Tests
 
 ```bash
-cd api && npm test
+cd api && npm test    # 41 tests: pure domain rules + HTTP integration (no DB needed)
 ```
+
+CI (GitHub Actions) runs the API typecheck + tests and the web production build on every push and pull request.
 
 ## API overview
 
@@ -65,13 +67,13 @@ Errors always have the shape `{ "error": { "code", "message", "details?" } }` wi
 
 **Overlap semantics.** Bookings are half-open intervals `[startTime, endTime)`. Two bookings conflict iff `a.start < b.end AND b.start < a.end`. This single rule correctly covers identical ranges, partial overlaps, and full containment — and it deliberately **allows back-to-back bookings** (one ending 10:00, the next starting 10:00), which is the behaviour people expect from a meeting room. `startTime` must be strictly before `endTime`, so zero-length bookings are rejected.
 
-**Concurrency.** The overlap check and insert run inside a `SERIALIZABLE` transaction, so two simultaneous requests for the same slot cannot both pass the check; the loser is retried once and then surfaces as a clean `409 BOOKING_OVERLAP`.
+**Concurrency.** The overlap check and insert run inside a `SERIALIZABLE` transaction, so two simultaneous requests for the same slot cannot both pass the check. A losing transaction (Prisma `P2034`) is retried up to 3 times; if the last attempt still hits a serialization failure it is reported as a clean `409 BOOKING_OVERLAP` — under this workload a serialization failure means a competing booking for the same window won the race — never as a 500.
 
-**Authentication.** Per the brief, auth is intentionally not production-grade: logging in exchanges a chosen userId for a bearer token (the user's id). What matters is that *authorization is real*: the server resolves the user and role from the database on every request — clients can never claim a role, deleted users are rejected immediately, and role changes take effect on the next request. Swapping this for signed JWTs later would only touch `authenticate.ts` and the login route.
+**Authentication.** Per the brief, auth is intentionally not production-grade: logging in exchanges a chosen userId for a bearer token (**the token is literally the user's id**, and `GET /auth/users` exposes every id publicly for the login picker — so on the deployed demo anyone can act as any user, including the admin. This is a deliberate demo trade-off, not an oversight). What *is* real is authorization: the server resolves the user and role from the database on every request — a client cannot invent a role that isn't in the database, deleted users are rejected immediately, and role changes take effect on the next request. Swapping in opaque session tokens or signed JWTs would only touch `authenticate.ts` and the login route. The frontend also self-heals: any authenticated request that returns 401 (e.g. your user was deleted) clears the stored session and returns to the login picker.
 
 **Roles.** The permission matrix lives in one pure module (`api/src/domain/permissions.ts`) used by all routes — a single source of truth that is unit-tested directly. The frontend also hides buttons/links the current role can't use, but that is purely cosmetic; every check is enforced by the backend.
 
-**Deleting a user** (admin) **cascades to their bookings** — the schema declares `onDelete: Cascade` — so the room slots they held are freed and no orphaned records remain. Admins cannot delete their own account, which prevents a sole admin from locking the system out of user management.
+**Deleting a user** (admin) **cascades to their bookings** — the schema declares `onDelete: Cascade` — so the room slots they held are freed and no orphaned records remain. The system also enforces that **at least one admin always remains**: deleting the last admin, or demoting them via a role change, is rejected with a stable `LAST_ADMIN` error code — otherwise user management could be locked out permanently.
 
 **Login user list.** `GET /auth/users` exposes `id`/`name`/`role` publicly, a deliberate exception to the admin-only user listing rule: the assignment requires a pre-auth "log in as user" picker, which needs the list before a session exists. Full user records stay admin-only.
 
@@ -79,16 +81,18 @@ Errors always have the shape `{ "error": { "code", "message", "details?" } }` wi
 
 ## Testing notes
 
-**Tested** (21 unit tests, Vitest): the overlap matrix the brief calls out — identical ranges, partial overlaps both directions, containment both directions, back-to-back both directions, disjoint ranges, symmetry — range validation, and the full role/permission matrix. These are the pieces where a subtle bug is most likely and most costly, and they are pure functions, so the tests are fast and deterministic.
+**Tested** (41 tests, Vitest — run in CI on every push):
+- *Unit tests on the pure domain* — the overlap matrix the brief calls out (identical ranges, partial overlaps both directions, containment both directions, back-to-back both directions, disjoint ranges, symmetry), range validation, the full role/permission matrix, and the last-admin invariant.
+- *HTTP integration tests* (`supertest`) — the full Express stack with the Prisma client replaced by a deterministic in-memory fake: 401 without/with a dead token, 403 for a user deleting someone else's booking, 403 for non-admins on `/users` and `/summary`, 404 for missing bookings, 409 with conflict details on overlap, back-to-back acceptance, 204 + cascade on user delete, and the `LAST_ADMIN` blocks. No database needed, so they run fast and identically everywhere.
 
 **Deliberately not tested, and why:**
-- *Route handlers / services against a real database* — they are thin glue over Prisma; testing them properly means integration tests with a throwaway Postgres (e.g. Testcontainers), which I judged out of scope for the time budget. The end-to-end behaviour (401/403/404/409 paths, cascade delete, self-delete block) was verified manually via HTTP against the running server instead.
 - *The React UI* — it contains no business logic beyond mirroring server permissions for usability; the server remains the enforcement point.
 - *Zod schemas* — testing them re-tests the library.
+- *The serializable-transaction retry against a real Postgres* — the retry logic is exercised, but true serialization conflicts need concurrent transactions on a real database (e.g. Testcontainers), which I judged out of scope for the time budget.
 
 ## Trade-offs and what I'd do with more time
 
-- **Integration test suite** against ephemeral Postgres for the HTTP + transaction paths (the serializable-transaction retry is the one piece unit tests can't reach).
+- **Integration tests against ephemeral Postgres** (e.g. Testcontainers) to cover real transaction serialization on top of the current in-memory-fake suite.
 - **A Postgres exclusion constraint** (`tstzrange` + GiST) as a database-level backstop for overlaps, making the no-overlap invariant hold even against out-of-band writes.
 - **Real authentication** (signed JWTs or sessions + passwords) — isolated in one middleware by design.
 - **Pagination and date-range filtering** on `GET /bookings` — fine for one room at demo scale, needed beyond that.
@@ -100,5 +104,5 @@ Errors always have the shape `{ "error": { "code", "message", "details?" } }` wi
 The app deploys as two services plus a database:
 
 1. **Postgres on Supabase** — create a free project, then copy the **Session pooler** connection string (Connect → Session pooler; it is IPv4-compatible, which Render requires). Use it as `DATABASE_URL`.
-2. **API on Render** — `render.yaml` is included; create a Web Service from this repo and set `DATABASE_URL` (the Supabase session-pooler URL) and `CORS_ORIGIN` (the Vercel URL). The build runs `npm ci && npm run build && npx prisma migrate deploy`, then `npm start`. Seed once from the Render shell (or locally against the same `DATABASE_URL`) with `npm run db:seed`.
+2. **API on Render** — `render.yaml` is included; create a Web Service from this repo and set `DATABASE_URL` (the Supabase session-pooler URL) and `CORS_ORIGIN` (the Vercel URL). The build runs `npm ci && npm run build && npx prisma migrate deploy`, then `npm start`. Seed once, locally against the production `DATABASE_URL`, with `SEED_FORCE=1 npm run db:seed` — the seed **wipes all users and bookings**, so it refuses to run against a non-local database unless `SEED_FORCE=1` is set.
 3. **Web on Vercel** — import the repo, set the root directory to `web/`, and set `NEXT_PUBLIC_API_URL` to the Render API URL.

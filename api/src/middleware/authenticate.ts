@@ -4,7 +4,6 @@ import { ApiError } from '../errors.js';
 import type { Actor, Role } from '../domain/permissions.js';
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       actor?: Actor & { name: string };

@@ -10,16 +10,22 @@ export function listBookings() {
   return prisma.booking.findMany({ ...bookingWithUser, orderBy: { startTime: 'asc' } });
 }
 
+/** Serializable-transaction attempts before giving up on a contended slot. */
+const MAX_CREATE_ATTEMPTS = 3;
+
 /**
  * Creates a booking after checking the range is valid and free. The overlap
  * check and insert run inside a SERIALIZABLE transaction so two concurrent
- * requests for the same slot cannot both pass the check; on a serialization
- * conflict (Prisma P2034) the transaction is retried once, which then
- * surfaces the overlap as a clean 409.
+ * requests for the same slot cannot both pass the check. On a serialization
+ * conflict (Prisma P2034) the transaction is retried up to MAX_CREATE_ATTEMPTS
+ * times; if the last attempt still conflicts, the contention is reported as a
+ * clean 409 BOOKING_OVERLAP rather than a 500 — under this workload a
+ * serialization failure means another booking for the same window won the race.
  */
 export async function createBooking(actor: Actor, range: TimeRange) {
-  if (validateRange(range)) {
-    throw ApiError.badRequest('INVALID_TIME_RANGE', 'startTime must be strictly before endTime.');
+  const rangeError = validateRange(range);
+  if (rangeError) {
+    throw ApiError.badRequest(rangeError, 'startTime must be strictly before endTime.');
   }
 
   const attempt = () =>
@@ -48,13 +54,21 @@ export async function createBooking(actor: Actor, range: TimeRange) {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
-  try {
-    return await attempt();
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
-      return attempt();
+  for (let attemptNo = 1; ; attemptNo++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      const isSerializationFailure = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
+      if (!isSerializationFailure) {
+        throw err;
+      }
+      if (attemptNo >= MAX_CREATE_ATTEMPTS) {
+        throw ApiError.conflict(
+          'BOOKING_OVERLAP',
+          'The room was booked by someone else while processing your request. Please pick another time.',
+        );
+      }
     }
-    throw err;
   }
 }
 

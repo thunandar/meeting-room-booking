@@ -12,11 +12,11 @@ describe('validateRange', () => {
   });
 
   it('rejects start equal to end', () => {
-    expect(validateRange(range('09:00', '09:00'))).toBe('EMPTY_OR_NEGATIVE_RANGE');
+    expect(validateRange(range('09:00', '09:00'))).toBe('INVALID_TIME_RANGE');
   });
 
   it('rejects start after end', () => {
-    expect(validateRange(range('10:00', '09:00'))).toBe('EMPTY_OR_NEGATIVE_RANGE');
+    expect(validateRange(range('10:00', '09:00'))).toBe('INVALID_TIME_RANGE');
   });
 });
 

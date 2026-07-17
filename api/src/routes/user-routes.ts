@@ -33,7 +33,6 @@ userRouter.patch('/:id/role', async (req, res) => {
 });
 
 userRouter.delete('/:id', async (req, res) => {
-  const actor = requireActor(req);
-  await userService.deleteUser(actor, req.params.id);
+  await userService.deleteUser(req.params.id);
   res.status(204).end();
 });
