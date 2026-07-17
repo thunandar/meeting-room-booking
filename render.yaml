@@ -12,6 +12,7 @@ services:
     runtime: node
     plan: free
     rootDir: api
+    healthCheckPath: /health
     buildCommand: npm ci && npm run build && npx prisma migrate deploy
     startCommand: npm start
     envVars:

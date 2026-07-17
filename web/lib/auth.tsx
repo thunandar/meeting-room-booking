@@ -36,6 +36,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
+  // The cached session can go stale (an admin may have changed this user's
+  // role since login), so reconcile it with the server whenever a token
+  // becomes active. A deleted user's 401 is handled globally in apiRequest.
+  const token = session?.token;
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    apiRequest<{ user: User }>('/auth/me', { token })
+      .then(({ user }) => {
+        if (cancelled) return;
+        setSession((current) => {
+          if (!current || current.token !== token) return current;
+          if (JSON.stringify(current.user) === JSON.stringify(user)) return current;
+          const next = { ...current, user };
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          return next;
+        });
+      })
+      .catch(() => {
+        // Network failure or 401 (auto-logout) — keep the cached session.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
   const login = useCallback(async (userId: string) => {
     const { token, user } = await apiRequest<{ token: string; user: User }>('/auth/login', {
       method: 'POST',

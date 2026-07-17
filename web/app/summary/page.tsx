@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiRequest, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { UserUsageSummary } from '@/lib/types';
@@ -35,17 +36,31 @@ function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; val
 
 export default function SummaryPage() {
   const { session } = useAuth();
+  const router = useRouter();
   const [summary, setSummary] = useState<UserUsageSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Owner/admin page: regular users are sent back to bookings. UI gating
+  // only — the backend independently rejects them with 403.
+  const allowed = session?.user.role === 'admin' || session?.user.role === 'owner';
   useEffect(() => {
-    if (!session) return;
+    if (session && !allowed) {
+      router.replace('/bookings');
+    }
+  }, [session, allowed, router]);
+
+  useEffect(() => {
+    if (!session || !(session.user.role === 'admin' || session.user.role === 'owner')) return;
     apiRequest<{ summary: UserUsageSummary[] }>('/summary', { token: session.token })
       .then(({ summary }) => setSummary(summary))
       .catch((err: unknown) =>
         setError(err instanceof ApiRequestError ? err.message : 'Could not load the summary.'),
       );
   }, [session]);
+
+  if (session && !allowed) {
+    return null; // redirecting to /bookings
+  }
 
   const totalBookings = summary?.reduce((sum, entry) => sum + entry.totalBookings, 0) ?? 0;
   const totalMinutes = summary?.reduce((sum, entry) => sum + entry.totalMinutes, 0) ?? 0;

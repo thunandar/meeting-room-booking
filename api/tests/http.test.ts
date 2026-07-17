@@ -251,6 +251,21 @@ describe('user management', () => {
     const res = await request(app).delete(`/users/${second.id}`).set(asUser(admin.id));
     expect(res.status).toBe(204);
   });
+
+  it('allows an admin to delete their own account when another admin remains', async () => {
+    const second = db.addUser('Second Admin', 'admin');
+    const res = await request(app).delete(`/users/${second.id}`).set(asUser(second.id));
+    expect(res.status).toBe(204);
+  });
+});
+
+describe('session revalidation', () => {
+  it('GET /auth/me reflects a role changed after login', async () => {
+    await request(app).patch(`/users/${uma.id}/role`).set(asUser(admin.id)).send({ role: 'owner' });
+    const res = await request(app).get('/auth/me').set(asUser(uma.id));
+    expect(res.status).toBe(200);
+    expect(res.body.user).toEqual({ id: uma.id, name: 'Uma', role: 'owner' });
+  });
 });
 
 describe('summary', () => {

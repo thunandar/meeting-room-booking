@@ -35,6 +35,10 @@ export async function createBooking(actor: Actor, range: TimeRange) {
           where: { startTime: { lt: range.endTime }, endTime: { gt: range.startTime } },
           ...bookingWithUser,
         });
+        // Deliberate backstop, not a forgotten filter: the SQL `where` above
+        // preselects candidates, but the authoritative overlap decision is
+        // re-made by the same pure, unit-tested rule the rest of the domain
+        // uses (and it yields the specific conflicting booking for the 409).
         const conflict = findConflict(range, overlapping);
         if (conflict) {
           throw ApiError.conflict('BOOKING_OVERLAP', 'The room is already booked during this time.', {

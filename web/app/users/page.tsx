@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiRequest, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Role, User } from '@/lib/types';
@@ -68,14 +69,24 @@ function CreateUserForm({ token, onCreated }: { token: string; onCreated: () => 
 
 export default function UsersPage() {
   const { session } = useAuth();
+  const router = useRouter();
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [roleSavingId, setRoleSavingId] = useState<string | null>(null);
 
+  // Admin-only page: anyone else is sent back to bookings. UI gating only —
+  // the backend independently rejects non-admin requests with 403.
+  const allowed = session?.user.role === 'admin';
+  useEffect(() => {
+    if (session && !allowed) {
+      router.replace('/bookings');
+    }
+  }, [session, allowed, router]);
+
   const refresh = useCallback(async () => {
-    if (!session) return;
+    if (!session || session.user.role !== 'admin') return;
     try {
       const { users } = await apiRequest<{ users: User[] }>('/users', { token: session.token });
       setUsers(users);
@@ -120,12 +131,8 @@ export default function UsersPage() {
     }
   }
 
-  if (session && session.user.role !== 'admin') {
-    return (
-      <AppShell>
-        <ErrorAlert message="Only admins can manage users." />
-      </AppShell>
-    );
+  if (session && !allowed) {
+    return null; // redirecting to /bookings
   }
 
   return (
