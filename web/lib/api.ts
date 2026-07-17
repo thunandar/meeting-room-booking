@@ -33,6 +33,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     return undefined as T;
   }
 
+  // An authenticated request that comes back 401 means the stored session is
+  // dead (e.g. the user was deleted). Clear it and return to the login picker
+  // instead of leaving the app stuck behind a permanent error banner.
+  if (response.status === 401 && options.token && typeof window !== 'undefined') {
+    window.localStorage.removeItem('meeting-room-session');
+    window.location.assign('/');
+  }
+
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const error = payload?.error;

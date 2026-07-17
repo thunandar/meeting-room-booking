@@ -7,6 +7,9 @@ import type { Role, User } from '@/lib/types';
 import { AppShell } from '@/components/app-shell';
 import { RoleBadge } from '@/components/role-badge';
 import { ErrorAlert } from '@/components/error-alert';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { TrashIcon } from '@/components/icons';
+import { toast } from '@/lib/toast';
 
 const ROLES: Role[] = ['user', 'owner', 'admin'];
 
@@ -22,6 +25,7 @@ function CreateUserForm({ token, onCreated }: { token: string; onCreated: () => 
     setSubmitting(true);
     try {
       await apiRequest('/users', { method: 'POST', token, body: { name, role } });
+      toast(`${name.trim()} created`);
       setName('');
       setRole('user');
       onCreated();
@@ -33,25 +37,19 @@ function CreateUserForm({ token, onCreated }: { token: string; onCreated: () => 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="font-semibold">Create user</h2>
-      <div className="flex flex-wrap items-end gap-4">
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Name</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-md border border-slate-300 px-2 py-1.5"
-            required
-          />
+    <form onSubmit={handleSubmit} className="card-clean space-y-4 p-5 shadow-soft sm:p-6">
+      <div>
+        <p className="eyebrow mb-1">Administration</p>
+        <h2 className="font-serif text-2xl">Create user</h2>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+        <label className="block">
+          <span className="field-label">Name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="field" required />
         </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-slate-600">Role</span>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            className="rounded-md border border-slate-300 px-2 py-1.5"
-          >
+        <label className="block">
+          <span className="field-label">Role</span>
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="field sm:w-32">
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
@@ -59,11 +57,7 @@ function CreateUserForm({ token, onCreated }: { token: string; onCreated: () => 
             ))}
           </select>
         </label>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
+        <button type="submit" disabled={submitting} className="btn-primary">
           {submitting ? 'Creating…' : 'Create'}
         </button>
       </div>
@@ -74,8 +68,11 @@ function CreateUserForm({ token, onCreated }: { token: string; onCreated: () => 
 
 export default function UsersPage() {
   const { session } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [roleSavingId, setRoleSavingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!session) return;
@@ -92,26 +89,34 @@ export default function UsersPage() {
     void refresh();
   }, [refresh]);
 
-  async function handleRoleChange(userId: string, role: Role) {
+  async function handleRoleChange(user: User, role: Role) {
     if (!session) return;
+    setRoleSavingId(user.id);
     try {
-      await apiRequest(`/users/${userId}/role`, { method: 'PATCH', token: session.token, body: { role } });
+      await apiRequest(`/users/${user.id}/role`, { method: 'PATCH', token: session.token, body: { role } });
+      toast(`${user.name} is now ${role}`);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Could not change the role.');
+      toast(err instanceof ApiRequestError ? err.message : 'Could not change the role.', 'error');
+      await refresh(); // revert the select to the server's value
+    } finally {
+      setRoleSavingId(null);
     }
   }
 
-  async function handleDelete(user: User) {
-    if (!session) return;
-    if (!window.confirm(`Delete ${user.name}? Their bookings will be deleted too.`)) {
-      return;
-    }
+  async function handleDelete() {
+    if (!session || !confirming) return;
+    setDeleting(true);
     try {
-      await apiRequest(`/users/${user.id}`, { method: 'DELETE', token: session.token });
+      await apiRequest(`/users/${confirming.id}`, { method: 'DELETE', token: session.token });
+      toast(`${confirming.name} deleted`);
+      setConfirming(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Could not delete the user.');
+      toast(err instanceof ApiRequestError ? err.message : 'Could not delete the user.', 'error');
+      setConfirming(null);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -126,44 +131,93 @@ export default function UsersPage() {
   return (
     <AppShell>
       {session && <CreateUserForm token={session.token} onCreated={refresh} />}
+
       <section className="space-y-3">
-        <h2 className="font-semibold">Users</h2>
+        <div className="flex items-baseline justify-between">
+          <div>
+            <p className="eyebrow mb-1">Team</p>
+            <h2 className="font-serif text-2xl">Users</h2>
+          </div>
+          {users !== null && (
+            <span className="text-sm text-ink-mute">
+              {users.length} user{users.length === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
+
         <ErrorAlert message={error} />
-        <ul className="space-y-2">
-          {users.map((user) => (
-            <li
-              key={user.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{user.name}</span>
-                <RoleBadge role={user.role} />
-                {session?.user.id === user.id && <span className="text-xs text-slate-500">(you)</span>}
-              </div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={user.role}
-                  onChange={(e) => handleRoleChange(user.id, e.target.value as Role)}
-                  className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => handleDelete(user)}
-                  disabled={session?.user.id === user.id}
-                  className="rounded-md border border-red-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+
+        {users === null && !error && (
+          <ul className="space-y-2.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="card-clean h-16 animate-pulse bg-card" />
+            ))}
+          </ul>
+        )}
+
+        {users !== null && (
+          <ul className="space-y-2.5">
+            {users.map((user, index) => (
+              <li
+                key={user.id}
+                className="card-clean animate-rise flex flex-wrap items-center justify-between gap-3 px-5 py-4 shadow-soft"
+                style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="grid size-9 place-items-center rounded-full bg-accent-soft font-serif text-base text-accent-deep">
+                    {user.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{user.name}</span>
+                    <RoleBadge role={user.role} />
+                    {session?.user.id === user.id && <span className="text-xs text-ink-mute">(you)</span>}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={user.role}
+                    onChange={(e) => handleRoleChange(user, e.target.value as Role)}
+                    disabled={roleSavingId === user.id}
+                    aria-label={`Role for ${user.name}`}
+                    className="field w-28 py-1.5 text-sm disabled:opacity-50"
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setConfirming(user)}
+                    disabled={session?.user.id === user.id}
+                    className="btn-danger-outline"
+                    title={session?.user.id === user.id ? 'You cannot delete yourself' : undefined}
+                  >
+                    <TrashIcon size={14} /> Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
+
+      {confirming && (
+        <ConfirmDialog
+          title={`Delete ${confirming.name}?`}
+          message={
+            <>
+              <strong>{confirming.name}</strong> will be removed permanently, along with all of their bookings. This
+              cannot be undone.
+            </>
+          }
+          confirmLabel="Delete user"
+          busyLabel="Deleting…"
+          busy={deleting}
+          onCancel={() => setConfirming(null)}
+          onConfirm={handleDelete}
+        />
+      )}
     </AppShell>
   );
 }
