@@ -27,15 +27,24 @@ interface ConflictDetails {
 }
 
 /** Turns a 409 overlap into a message naming the exact conflicting booking. */
-function describeBookingError(err: ApiRequestError): string {
+function describeBookingError(err: ApiRequestError, currentUserName: string): string {
   const conflict = (err.details as ConflictDetails | undefined)?.conflictingBooking;
   if (err.code === 'BOOKING_OVERLAP' && conflict) {
-    return `${err.message} Conflicts with ${conflict.bookedBy}'s booking, ${formatInstant(conflict.startTime)} → ${formatInstant(conflict.endTime)}.`;
+    const whose = conflict.bookedBy === currentUserName ? 'your' : `${conflict.bookedBy}'s`;
+    return `${err.message} Conflicts with ${whose} booking, ${formatInstant(conflict.startTime)} → ${formatInstant(conflict.endTime)}.`;
   }
   return err.message;
 }
 
-function CreateBookingForm({ token, onCreated }: { token: string; onCreated: () => void }) {
+function CreateBookingForm({
+  token,
+  userName,
+  onCreated,
+}: {
+  token: string;
+  userName: string;
+  onCreated: () => void;
+}) {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +71,7 @@ function CreateBookingForm({ token, onCreated }: { token: string; onCreated: () 
       setEndTime('');
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiRequestError ? describeBookingError(err) : 'Could not create the booking.');
+      setError(err instanceof ApiRequestError ? describeBookingError(err, userName) : 'Could not create the booking.');
     } finally {
       setSubmitting(false);
     }
@@ -150,7 +159,7 @@ export default function BookingsPage() {
 
   return (
     <AppShell>
-      {session && <CreateBookingForm token={session.token} onCreated={refresh} />}
+      {session && <CreateBookingForm token={session.token} userName={session.user.name} onCreated={refresh} />}
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
