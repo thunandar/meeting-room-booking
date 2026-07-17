@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: meeting-room-api
+    runtime: node
+    rootDir: api
+    buildCommand: npm ci && npm run build && npx prisma migrate deploy
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: NODE_VERSION
+        value: '22'
