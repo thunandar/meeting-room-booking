@@ -1,0 +1,279 @@
+{
+  "info": {
+    "name": "Meeting Room Booking API",
+    "description": "Proof that all permission and booking rules are enforced server-side.\n\nSetup: run 'Auth / List login users (public)' first and copy the ids into the collection variables (aliceId = admin, oliverId = owner, umaId & benId = user). Auth is intentionally simple per the assignment: the bearer token IS the user's id.\n\nEach request's description states the expected status code. Requests marked FORBIDDEN-PROOF are expected to FAIL with 401/403 — that is the point: they bypass the frontend and show the backend refusing on its own.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://meeting-room-booking-a397.onrender.com", "description": "Use http://localhost:4000 for local" },
+    { "key": "aliceId", "value": "cmrog3vv40001mmw0yegidclz", "description": "admin — refresh from GET /auth/users after any reseed" },
+    { "key": "oliverId", "value": "cmrog3vjj0000mmw0bfg6fruj", "description": "owner" },
+    { "key": "umaId", "value": "cmrog3vwa0002mmw0c94u36vr", "description": "user" },
+    { "key": "benId", "value": "cmrog3vwf0003mmw0lmq720ob", "description": "user" },
+    { "key": "bookingId", "value": "", "description": "paste the id returned by 'Create booking (Uma)'" },
+    { "key": "targetUserId", "value": "", "description": "paste the id returned by 'Create user (admin)'" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Expect 200. First call after idle may take ~30s (free-tier cold start)."
+          }
+        },
+        {
+          "name": "List login users (public)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/auth/users", "host": ["{{baseUrl}}"], "path": ["auth", "users"] },
+            "description": "Expect 200. Public — powers the login picker. Copy the ids into the collection variables."
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{umaId}}\"\n}" },
+            "description": "Expect 200 with { token, user }. The token equals the user id (assignment allows non-production-grade auth)."
+          }
+        },
+        {
+          "name": "Who am I (/auth/me)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{umaId}}" }],
+            "description": "Expect 200 with the CURRENT user record — used by the frontend to reconcile stale sessions (e.g. role changed by an admin after login)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "List bookings (any role)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{umaId}}" }],
+            "description": "Expect 200. All roles can view all bookings."
+          }
+        },
+        {
+          "name": "FORBIDDEN-PROOF: list bookings without token",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "description": "Expect 401 UNAUTHORIZED — no Authorization header, proving endpoints are not open to anonymous callers."
+          }
+        },
+        {
+          "name": "Create booking (Uma)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{umaId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"startTime\": \"2026-07-25T09:00:00Z\",\n  \"endTime\": \"2026-07-25T10:00:00Z\"\n}" },
+            "description": "Expect 201. Copy the returned booking.id into the {{bookingId}} variable for the delete tests. Times are UTC instants; pick a free future slot."
+          }
+        },
+        {
+          "name": "Overlap: identical range (Ben)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{benId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"startTime\": \"2026-07-25T09:00:00Z\",\n  \"endTime\": \"2026-07-25T10:00:00Z\"\n}" },
+            "description": "Expect 409 BOOKING_OVERLAP with the conflicting booking in details."
+          }
+        },
+        {
+          "name": "Overlap: partial (Ben)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{benId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"startTime\": \"2026-07-25T09:30:00Z\",\n  \"endTime\": \"2026-07-25T10:30:00Z\"\n}" },
+            "description": "Expect 409 BOOKING_OVERLAP."
+          }
+        },
+        {
+          "name": "Overlap: fully inside (Ben)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{benId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"startTime\": \"2026-07-25T09:15:00Z\",\n  \"endTime\": \"2026-07-25T09:45:00Z\"\n}" },
+            "description": "Expect 409 BOOKING_OVERLAP — one range fully inside another."
+          }
+        },
+        {
+          "name": "Back-to-back is allowed (Ben)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{benId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"startTime\": \"2026-07-25T10:00:00Z\",\n  \"endTime\": \"2026-07-25T11:00:00Z\"\n}" },
+            "description": "Expect 201 — [start, end) semantics: a booking ending at 10:00 does not conflict with one starting at 10:00. Delete this booking afterwards to keep the demo data clean."
+          }
+        },
+        {
+          "name": "Invalid: start not before end",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/bookings", "host": ["{{baseUrl}}"], "path": ["bookings"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{umaId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"startTime\": \"2026-07-26T10:00:00Z\",\n  \"endTime\": \"2026-07-26T09:00:00Z\"\n}" },
+            "description": "Expect 400 INVALID_TIME_RANGE."
+          }
+        },
+        {
+          "name": "FORBIDDEN-PROOF: Ben deletes Uma's booking",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{benId}}" }],
+            "description": "Expect 403 FORBIDDEN — a plain user can only delete their own bookings, enforced server-side."
+          }
+        },
+        {
+          "name": "Delete own booking (Uma)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/bookings/{{bookingId}}", "host": ["{{baseUrl}}"], "path": ["bookings", "{{bookingId}}"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{umaId}}" }],
+            "description": "Expect 204. Owners/admins may delete ANY booking — retry with Bearer {{oliverId}} on another booking to prove it."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users (admin only)",
+      "item": [
+        {
+          "name": "FORBIDDEN-PROOF: Uma (user) lists users",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{umaId}}" }],
+            "description": "Expect 403 — only admins can manage users, even though the frontend never shows Uma this page."
+          }
+        },
+        {
+          "name": "FORBIDDEN-PROOF: Uma (user) deletes a user",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/users/{{benId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{benId}}"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{umaId}}" }],
+            "description": "Expect 403 FORBIDDEN. The core server-side-enforcement proof from the assignment."
+          }
+        },
+        {
+          "name": "List users (admin)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{aliceId}}" }],
+            "description": "Expect 200."
+          }
+        },
+        {
+          "name": "Create user (admin)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{aliceId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test User\",\n  \"role\": \"user\"\n}" },
+            "description": "Expect 201. Copy the returned id into {{targetUserId}} for the next two requests."
+          }
+        },
+        {
+          "name": "Change role (admin)",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/users/{{targetUserId}}/role", "host": ["{{baseUrl}}"], "path": ["users", "{{targetUserId}}", "role"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{aliceId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"owner\"\n}" },
+            "description": "Expect 200 with the updated user."
+          }
+        },
+        {
+          "name": "Delete user (admin)",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/users/{{targetUserId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{targetUserId}}"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{aliceId}}" }],
+            "description": "Expect 204. Their bookings are deleted with them (documented cascade behavior)."
+          }
+        },
+        {
+          "name": "GUARD-PROOF: cannot demote the last admin",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/users/{{aliceId}}/role", "host": ["{{baseUrl}}"], "path": ["users", "{{aliceId}}", "role"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{aliceId}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"user\"\n}" },
+            "description": "Expect 400 LAST_ADMIN (when Alice is the only admin) — the system can never lock itself out of user management."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Summary (owner/admin only)",
+      "item": [
+        {
+          "name": "FORBIDDEN-PROOF: Uma (user) requests summary",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/summary", "host": ["{{baseUrl}}"], "path": ["summary"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{umaId}}" }],
+            "description": "Expect 403 — summary is restricted to owner/admin."
+          }
+        },
+        {
+          "name": "Summary as owner",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/summary", "host": ["{{baseUrl}}"], "path": ["summary"] },
+            "header": [{ "key": "Authorization", "value": "Bearer {{oliverId}}" }],
+            "description": "Expect 200 — per-user totals (bookings grouped by user, total bookings and minutes)."
+          }
+        }
+      ]
+    }
+  ]
+}
