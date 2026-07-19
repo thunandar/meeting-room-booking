@@ -82,7 +82,7 @@ Errors always have the shape `{ "error": { "code", "message", "details?" } }` wi
 
 ## Testing notes
 
-**Tested** (41 tests, Vitest — run in CI on every push):
+**Tested** (43 tests, Vitest — run in CI on every push):
 - *Unit tests on the pure domain* — the overlap matrix the brief calls out (identical ranges, partial overlaps both directions, containment both directions, back-to-back both directions, disjoint ranges, symmetry), range validation, the full role/permission matrix, and the last-admin invariant.
 - *HTTP integration tests* (`supertest`) — the full Express stack with the Prisma client replaced by a deterministic in-memory fake: 401 without/with a dead token, 403 for a user deleting someone else's booking, 403 for non-admins on `/users` and `/summary`, 404 for missing bookings, 409 with conflict details on overlap, back-to-back acceptance, 204 + cascade on user delete, and the `LAST_ADMIN` blocks. No database needed, so they run fast and identically everywhere.
 
