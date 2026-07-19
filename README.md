@@ -39,7 +39,7 @@ Log in from the picker as **Alice (Admin)**, **Oliver (Owner)**, **Uma**, or **B
 ### Tests
 
 ```bash
-cd api && npm test    # 41 tests: pure domain rules + HTTP integration (no DB needed)
+cd api && npm test    # 43 tests: pure domain rules + HTTP integration (no DB needed)
 ```
 
 CI (GitHub Actions) runs the API typecheck + tests and the web production build on every push and pull request.
